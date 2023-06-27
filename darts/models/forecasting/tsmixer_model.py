@@ -136,7 +136,12 @@ class _TSMixerModel(PLMixedCovariatesModule):
                     hidden_size=self.hidden_size,
                 )
                 for _ in range(self.num_mixer_layers)
-            ]
+            ],
+        )
+
+        self.temporal_projection = nn.Linear(
+            self.input_chunk_length,
+            self.output_chunk_length * self.output_dim * self.nr_params,
         )
 
     def forward(
@@ -160,6 +165,8 @@ class _TSMixerModel(PLMixedCovariatesModule):
         x, x_future_covariates, x_static_covariates = x_in
 
         y_hat = self.mixer_stack(x)
+
+        y_hat = self.temporal_projection(y_hat.transpose(1, 2)).transpose(1, 2)
 
         y_hat = y_hat.view(
             -1, self.output_chunk_length, self.output_dim, self.nr_params
