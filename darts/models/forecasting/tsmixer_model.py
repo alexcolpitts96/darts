@@ -22,12 +22,12 @@ logger = get_logger(__name__)
 
 class _ResidualBlock(nn.Module):
     def __init__(
-            self,
-            input_dim: int,
-            input_chunk_length: int,
-            dropout: float,
-            hidden_size: int,
-        ):
+        self,
+        input_dim: int,
+        input_chunk_length: int,
+        dropout: float,
+        hidden_size: int,
+    ):
         super().__init__()
 
         self.input_dim = input_dim
@@ -161,7 +161,9 @@ class _TSMixerModel(PLMixedCovariatesModule):
 
         y_hat = self.mixer_stack(x)
 
-        y_hat = y_hat.view(-1, self.output_chunk_length, self.output_dim, self.nr_params)
+        y_hat = y_hat.view(
+            -1, self.output_chunk_length, self.output_dim, self.nr_params
+        )
 
         return y_hat
 
