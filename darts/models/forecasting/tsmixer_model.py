@@ -20,6 +20,51 @@ MixedCovariatesTrainTensorType = Tuple[
 logger = get_logger(__name__)
 
 
+class _ReversibleInstanceNorm(nn.Module):
+    def __init__(self, axis, input_dim, eps=1e-5, affine=True):
+        super().__init__()
+        self.axis = axis
+        self.input_dim = input_dim
+        self.eps = eps
+        self.affine = affine
+
+        if self.affine:
+            self.affine_weight = nn.Parameter(torch.ones(self.input_dim))
+            self.affine_bias = nn.Parameter(torch.zeros(self.input_dim))
+
+    def forward(self, x, mode, target_slice=None):
+        if mode == "norm":
+            self._get_statistics(x)
+            x = self._normalize(x)
+        elif mode == "denorm":
+            x = self._denormalize(x, target_slice)
+        else:
+            raise NotImplementedError
+        return x
+
+    def _get_statistics(self, x):
+        self.mean = torch.mean(x, dim=self.axis, keepdim=True).detach()
+        self.stdev = torch.sqrt(
+            torch.var(x, dim=self.axis, keepdim=True) + self.eps
+        ).detach()
+
+    def _normalize(self, x):
+        x = x - self.mean
+        x = x / self.stdev
+        if self.affine:
+            x = (x.transpose(2, 1) * self.affine_weight).transpose(2, 1)
+            x = (x.transpose(2, 1) + self.affine_bias).transpose(2, 1)
+        return x
+
+    def _denormalize(self, x, target_slice=None):
+        if self.affine:
+            x = (x.transpose(2, 1) - self.affine_bias[target_slice]).transpose(2, 1)
+            x = (x.transpose(2, 1) / self.affine_weight[target_slice]).transpose(2, 1)
+        x = x * self.stdev
+        x = x + self.mean
+        return x
+
+
 class _ResidualBlock(nn.Module):
     def __init__(
         self,
@@ -53,8 +98,9 @@ class _ResidualBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x has shape (batch_size, input_chunk_length, input_dim)
 
-        temporal_norm = self.norm(x.transpose(1, 2))
-        x = x + self.temporal_linear(temporal_norm).transpose(1, 2)
+        # temporal_norm = self.norm(x.transpose(1, 2))
+        # x = x + self.temporal_linear(temporal_norm).transpose(1, 2)
+        x = x + self.temporal_linear(x.transpose(1, 2)).transpose(1, 2)
         x = x + self.feature_linear(x)
 
         return x
@@ -127,6 +173,11 @@ class _TSMixerModel(PLMixedCovariatesModule):
         self.hidden_size = hidden_size
         self.dropout = dropout
 
+        self.rev_in_norm = _ReversibleInstanceNorm(
+            axis=-2,
+            input_dim=self.input_chunk_length,
+        )
+
         self.mixer_stack = nn.Sequential(
             *[
                 _ResidualBlock(
@@ -164,9 +215,13 @@ class _TSMixerModel(PLMixedCovariatesModule):
         # x_static_covariates has shape (batch_size, static_cov_dim)
         x, x_future_covariates, x_static_covariates = x_in
 
+        x = self.rev_in_norm(x, mode="norm")
+
         y_hat = self.mixer_stack(x)
 
         y_hat = self.temporal_projection(y_hat.transpose(1, 2)).transpose(1, 2)
+
+        y_hat = self.rev_in_norm(y_hat, mode="denorm")
 
         y_hat = y_hat.view(
             -1, self.output_chunk_length, self.output_dim, self.nr_params
