@@ -52,16 +52,16 @@ class _ReversibleInstanceNorm(nn.Module):
         x = x - self.mean
         x = x / self.stdev
         if self.affine:
-            x = (x.transpose(2, 1) * self.affine_weight).transpose(2, 1)
-            x = (x.transpose(2, 1) + self.affine_bias).transpose(2, 1)
+            x = x * self.affine_weight
+            x = x + self.affine_bias
         return x
 
     def _denormalize(self, x, target_slice=None):
         if self.affine:
-            x = (x.transpose(2, 1) - self.affine_bias[target_slice]).transpose(2, 1)
-            x = (x.transpose(2, 1) / self.affine_weight[target_slice]).transpose(2, 1)
-        x = x * self.stdev
-        x = x + self.mean
+            x = x - self.affine_bias[target_slice]
+            x = x / self.affine_weight[target_slice]
+        x = x * self.stdev[:, :, target_slice]
+        x = x + self.mean[:, :, target_slice]
         return x
 
 
@@ -175,7 +175,7 @@ class _TSMixerModel(PLMixedCovariatesModule):
 
         self.rev_in_norm = _ReversibleInstanceNorm(
             axis=-2,
-            input_dim=self.input_chunk_length,
+            input_dim=input_dim,
         )
 
         self.mixer_stack = nn.Sequential(
@@ -221,7 +221,11 @@ class _TSMixerModel(PLMixedCovariatesModule):
 
         y_hat = self.temporal_projection(y_hat.transpose(1, 2)).transpose(1, 2)
 
-        y_hat = self.rev_in_norm(y_hat, mode="denorm")
+        y_hat = y_hat[:, :, 0 : self.output_dim]
+
+        y_hat = self.rev_in_norm(
+            y_hat, mode="denorm", target_slice=slice(0, self.output_dim, 1)
+        )
 
         y_hat = y_hat.view(
             -1, self.output_chunk_length, self.output_dim, self.nr_params
@@ -235,8 +239,8 @@ class TSMixerModel(MixedCovariatesTorchModel):
         self,
         input_chunk_length: int,
         output_chunk_length: int,
-        hidden_size: int = 128,
-        num_mixer_layers: int = 2,
+        hidden_size: int = 256,
+        num_mixer_layers: int = 1,
         dropout: float = 0.1,
         use_static_covariates: bool = True,
         **kwargs,
