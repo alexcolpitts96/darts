@@ -2679,8 +2679,8 @@ class TimeSeries:
         values
             An array with the values to append.
 
-        Return
-        ------
+        Returns
+        -------
         TimeSeries
             A new TimeSeries with the new values appended
         """
@@ -2738,8 +2738,8 @@ class TimeSeries:
         values
             An array with the values to prepend to the start.
 
-        Return
-        ------
+        Returns
+        -------
         TimeSeries
             A new TimeSeries with the new values prepended.
         """
@@ -2778,8 +2778,8 @@ class TimeSeries:
             A Numpy array with new values. It must have the dimensions for time
             and componentns, but may contain a different number of samples.
 
-        Return
-        ------
+        Returns
+        -------
         TimeSeries
             A new TimeSeries with the new values and same index, static covariates and hierarchy
         """
@@ -2917,8 +2917,8 @@ class TimeSeries:
         other
             A TimeSeries instance with the same index and the same number of samples as the current one.
 
-        Return
-        ------
+        Returns
+        -------
         TimeSeries
             A new multivariate TimeSeries instance.
         """
@@ -3600,7 +3600,7 @@ class TimeSeries:
                     if isinstance(treat_na, (int, float))
                     else resulting_transformations.values[s_idx, i : (i + n_samples)]
                 )
-                resulting_transformations.values[:s_idx, i : (i + n_samples)] = value
+                resulting_transformations.iloc[:s_idx, i : (i + n_samples)] = value
         elif treat_na == "dropna":
             # can only drop the NaN rows that are common among the columns
             drop_before_index = original_index[np.min(added_na)]
@@ -3942,7 +3942,7 @@ class TimeSeries:
         """
         Return a ``TimeSeries`` containing the mean calculated over the specified axis.
 
-        If we reduce over time (``axis=1``), the resulting ``TimeSeries`` will have length one and will use the first
+        If we reduce over time (``axis=0``), the resulting ``TimeSeries`` will have length one and will use the first
         entry of the original ``time_index``. If we perform the calculation over the components (``axis=1``), the
         resulting single component will be renamed to "components_mean".  When applied to the samples (``axis=2``),
         a deterministic ``TimeSeries`` is returned.
@@ -3975,7 +3975,7 @@ class TimeSeries:
         """
         Return a ``TimeSeries`` containing the median calculated over the specified axis.
 
-        If we reduce over time (``axis=1``), the resulting ``TimeSeries`` will have length one and will use the first
+        If we reduce over time (``axis=0``), the resulting ``TimeSeries`` will have length one and will use the first
         entry of the original ``time_index``. If we perform the calculation over the components (``axis=1``), the
         resulting single component will be renamed to "components_median".  When applied to the samples (``axis=2``),
         a deterministic ``TimeSeries`` is returned.
@@ -4009,7 +4009,7 @@ class TimeSeries:
         """
         Return a ``TimeSeries`` containing the sum calculated over the specified axis.
 
-        If we reduce over time (``axis=1``), the resulting ``TimeSeries`` will have length one and will use the first
+        If we reduce over time (``axis=0``), the resulting ``TimeSeries`` will have length one and will use the first
         entry of the original ``time_index``. If we perform the calculation over the components (``axis=1``), the
         resulting single component will be renamed to "components_sum".  When applied to the samples (``axis=2``),
         a deterministic ``TimeSeries`` is returned.
@@ -4042,7 +4042,7 @@ class TimeSeries:
         """
         Return a ``TimeSeries`` containing the min calculated over the specified axis.
 
-        If we reduce over time (``axis=1``), the resulting ``TimeSeries`` will have length one and will use the first
+        If we reduce over time (``axis=0``), the resulting ``TimeSeries`` will have length one and will use the first
         entry of the original ``time_index``. If we perform the calculation over the components (``axis=1``), the
         resulting single component will be renamed to "components_min".  When applied to the samples (``axis=2``),
         a deterministic ``TimeSeries`` is returned.
@@ -4075,7 +4075,7 @@ class TimeSeries:
         """
         Return a ``TimeSeries`` containing the max calculated over the specified axis.
 
-        If we reduce over time (``axis=1``), the resulting ``TimeSeries`` will have length one and will use the first
+        If we reduce over time (``axis=0``), the resulting ``TimeSeries`` will have length one and will use the first
         entry of the original ``time_index``. If we perform the calculation over the components (``axis=1``), the
         resulting single component will be renamed to "components_max".  When applied to the samples (``axis=2``),
         a deterministic ``TimeSeries`` is returned.
@@ -4916,7 +4916,9 @@ class TimeSeries:
                 xa_ = xa_.assign_coords(
                     {
                         self._time_dim: pd.RangeIndex(
-                            start=key, stop=key + self.freq, step=self.freq
+                            start=time_idx[0],
+                            stop=time_idx[0] + self.freq,
+                            step=self.freq,
                         )
                     }
                 )
@@ -5093,7 +5095,7 @@ def concatenate(
         names of the resulting series and that of the merged hierarchy do not match.
         When `axis=0` or `axis=2`, the hierarchy of the first series is always kept.
 
-    Return
+    Returns
     -------
     TimeSeries
         concatenated series
