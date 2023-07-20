@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 
 from darts.logging import get_logger
+from darts.models.components.layer_norm_variants import RINorm
 from darts.models.forecasting.pl_forecasting_module import PLMixedCovariatesModule
 from darts.models.forecasting.torch_forecasting_model import MixedCovariatesTorchModel
 
@@ -16,53 +17,7 @@ MixedCovariatesTrainTensorType = Tuple[
     torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
 ]
 
-
 logger = get_logger(__name__)
-
-
-class _ReversibleInstanceNorm(nn.Module):
-    def __init__(self, axis, input_dim, eps=1e-5, affine=True):
-        super().__init__()
-        self.axis = axis
-        self.input_dim = input_dim
-        self.eps = eps
-        self.affine = affine
-
-        if self.affine:
-            self.affine_weight = nn.Parameter(torch.ones(self.input_dim))
-            self.affine_bias = nn.Parameter(torch.zeros(self.input_dim))
-
-    def forward(self, x, mode, target_slice=None):
-        if mode == "norm":
-            self._get_statistics(x)
-            x = self._normalize(x)
-        elif mode == "denorm":
-            x = self._denormalize(x, target_slice)
-        else:
-            raise NotImplementedError
-        return x
-
-    def _get_statistics(self, x):
-        self.mean = torch.mean(x, dim=self.axis, keepdim=True).detach()
-        self.stdev = torch.sqrt(
-            torch.var(x, dim=self.axis, keepdim=True) + self.eps
-        ).detach()
-
-    def _normalize(self, x):
-        x = x - self.mean
-        x = x / self.stdev
-        if self.affine:
-            x = x * self.affine_weight
-            x = x + self.affine_bias
-        return x
-
-    def _denormalize(self, x, target_slice=None):
-        if self.affine:
-            x = x - self.affine_bias[target_slice]
-            x = x / self.affine_weight[target_slice]
-        x = x * self.stdev[:, :, target_slice]
-        x = x + self.mean[:, :, target_slice]
-        return x
 
 
 class _ResidualBlock(nn.Module):
@@ -173,8 +128,7 @@ class _TSMixerModel(PLMixedCovariatesModule):
         self.hidden_size = hidden_size
         self.dropout = dropout
 
-        self.rev_in_norm = _ReversibleInstanceNorm(
-            axis=-2,
+        self.rin = RINorm(
             input_dim=input_dim,
         )
 
@@ -215,7 +169,7 @@ class _TSMixerModel(PLMixedCovariatesModule):
         # x_static_covariates has shape (batch_size, static_cov_dim)
         x, x_future_covariates, x_static_covariates = x_in
 
-        x = self.rev_in_norm(x, mode="norm")
+        x = self.rin(x, mode="norm")
 
         y_hat = self.mixer_stack(x)
 
@@ -223,7 +177,7 @@ class _TSMixerModel(PLMixedCovariatesModule):
 
         y_hat = y_hat[:, :, 0 : self.output_dim]
 
-        y_hat = self.rev_in_norm(
+        y_hat = self.rin(
             y_hat, mode="denorm", target_slice=slice(0, self.output_dim, 1)
         )
 
