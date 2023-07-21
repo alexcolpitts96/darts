@@ -129,7 +129,7 @@ class _TSMixerModel(PLMixedCovariatesModule):
         self.dropout = dropout
 
         self.rin = RINorm(
-            input_dim=input_dim,
+            input_dim=self.output_dim,
         )
 
         self.mixer_stack = nn.Sequential(
@@ -169,7 +169,7 @@ class _TSMixerModel(PLMixedCovariatesModule):
         # x_static_covariates has shape (batch_size, static_cov_dim)
         x, x_future_covariates, x_static_covariates = x_in
 
-        x = self.rin(x, mode="norm")
+        x[:, :, 0 : self.output_dim] = self.rin(x[:, :, 0 : self.output_dim])
 
         y_hat = self.mixer_stack(x)
 
@@ -177,13 +177,11 @@ class _TSMixerModel(PLMixedCovariatesModule):
 
         y_hat = y_hat[:, :, 0 : self.output_dim]
 
-        y_hat = self.rin(
-            y_hat, mode="denorm", target_slice=slice(0, self.output_dim, 1)
-        )
-
         y_hat = y_hat.view(
             -1, self.output_chunk_length, self.output_dim, self.nr_params
         )
+
+        y_hat = self.rin.inverse(y_hat)
 
         return y_hat
 
@@ -384,6 +382,10 @@ class TSMixerModel(MixedCovariatesTorchModel):
 
     @property
     def supports_static_covariates(self) -> bool:
+        return True
+
+    @property
+    def supports_multivariate(self) -> bool:
         return True
 
     def _create_model(
